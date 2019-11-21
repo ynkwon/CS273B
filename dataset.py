@@ -101,21 +101,48 @@ def get_test_loader(args, exclude_leak=False):
     return DataLoader(test_dataset, args.batch_size, shuffle=False, num_workers=args.num_data_workers,
             worker_init_fn=worker_init_fn)
 
-def get_controls_loader():
-    controls_dataset = ControlsDataset()
+def get_controls_loader(exp, plate, tr_tst):
+    controls_dataset = ControlsDataset(exp, plate,tr_tst)
     return DataLoader(controls_dataset)
 
 class ControlsDataset(Dataset):
-    def __init__(self, normalization='global'):
+    def __init__(self, exp, plate, tr_tst, normalization='global'):
         super().__init__()
         self.normalization=normalization
         path_str ='/data/'
         self.root = Path(path_str)
+        '''
         csv_train = pd.read_csv(self.root / 'train_controls.csv')
         csv_test = pd.read_csv(self.root / 'test_controls.csv')
+        '''
+        csv_t = pd.read_csv(self.root / 'train_controls.csv') if tr_tst=='train' else pd.read_csv(self.root / 'test_controls.csv')
+        csv_t = csv_t[csv_t['experiment'] == exp]
+        csv_t = csv_t[csv_t['plate'] == plate]
         
-        self.data = []  # (experiment, plate, well, site, cell_type, sirna or None)
+        self.data = []
         self.cell_types = []
+        
+        for row in csv_t.iterrows():
+            if len(self.data) == 31:
+                break
+            r = row[1]
+            self.data.append((r.experiment, plate, r.well, 1, exp, r.sirna if hasattr(r, 'sirna') else None))
+            self.data.append((r.experiment, plate, r.well, 2, exp, r.sirna if hasattr(r, 'sirna') else None))
+            
+            if typ not in self.cell_types:
+                self.cell_types.append(typ)
+                
+        #data_dict = {(e, p, w): sir for e, p, w, s, typ, sir in self.data}
+        self.data = sorted(self.data, key=lambda x: x[5])
+
+        self.cell_types = sorted(self.cell_types)
+
+        
+
+            
+        #self.data = []  # (experiment, plate, well, site, cell_type, sirna or None)
+        #self.cell_types = []
+        '''
         for row in chain(csv_train.iterrows(), csv_test.iterrows()):
             r = row[1]
             typ = r.experiment[:r.experiment.find('-')]
@@ -126,6 +153,7 @@ class ControlsDataset(Dataset):
         data_dict = {(e, p, w): sir for e, p, w, s, typ, sir in self.data}
 
         self.cell_types = sorted(self.cell_types)
+        '''
         
     def __len__(self):
         return len(self.data)
@@ -384,6 +412,10 @@ class CellularDataset(Dataset):
                 len(self.cell_types)).float()
 
         r = [image, cell_type, torch.tensor(i, dtype=torch.long)]
+        r.append(d[0]) # experiment num
+        r.append(d[1]) # plate num
+        r.append(torch.tensor(d[-1], dtype=torch.long)) # sirna num (label)
+        
         if self.mode != 'test':
             r.append(torch.tensor(d[-1], dtype=torch.long))
         return tuple(r)
