@@ -171,20 +171,20 @@ class ControlsDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, i, mode):
+    def __getitem__(self, i):
         d = self.data[i] # (experiment, plate, well, site, cell_type, sirna or None)
 
         images = []
         if d[2] != -1:
             for channel in range(1, 7):
-                #for dir in ['train', 'test']:
-                path = self.root / mode / d[0] / 'Plate{}'.format(d[1]) / '{}_s{}_w{}.png'.format(d[2], d[3], channel)
-                if path.exists():
-                    break
-                else:
-                    assert 0
-                images.append(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE))
-                assert images[-1] is not None
+                for dir in ['train', 'test']:
+                    path = self.root / mode / d[0] / 'Plate{}'.format(d[1]) / '{}_s{}_w{}.png'.format(d[2], d[3], channel)
+                    if path.exists():
+                        break
+                    else:
+                        assert 0
+                    images.append(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE))
+                    assert images[-1] is not None
         else:
             size = 512, 512, 6
             images = np.zeros(size, dtype=np.uint8)
