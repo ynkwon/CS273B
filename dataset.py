@@ -128,18 +128,30 @@ class ControlsDataset(Dataset):
             if r.sirna in sirna_type:
                 continue
             sirna_type.add(r.sirna)
+            typ = r.experiment[:r.experiment.find('-')]
+            self.data.append((r.experiment, plate, r.well, 1, typ, r.sirna if hasattr(r, 'sirna') else None))
+            self.data.append((r.experiment, plate, r.well, 2, typ, r.sirna if hasattr(r, 'sirna') else None))
             
-            self.data.append((r.experiment, plate, r.well, 1, exp, r.sirna if hasattr(r, 'sirna') else None))
-            self.data.append((r.experiment, plate, r.well, 2, exp, r.sirna if hasattr(r, 'sirna') else None))
-            
-            if exp not in self.cell_types:
-                self.cell_types.append(exp)
+            if typ not in self.cell_types:
+                self.cell_types.append(typ)
                 
         #data_dict = {(e, p, w): sir for e, p, w, s, typ, sir in self.data}
+        if len(sirna_type) != 31:
+            for i in range(1108,1139):
+                if i not in sirna_type:
+                    #trash value
+                    self.data.append((exp, plate, -1, -1, exp[:exp.find('-')], i)
+                                      
         self.data = sorted(self.data, key=lambda x: x[5])
 
         self.cell_types = sorted(self.cell_types)
-
+        self.missing = []
+        '''
+        if len(sirna_type != 31):
+            for i in range(1108,1139):
+                if i not in sirna_type:
+                    self.missing.append(i)    
+        '''
             
         #self.data = []  # (experiment, plate, well, site, cell_type, sirna or None)
         #self.cell_types = []
@@ -159,21 +171,29 @@ class ControlsDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, i):
-        d = self.data[i]
+    def __getitem__(self, i, mode):
+        d = self.data[i] # (experiment, plate, well, site, cell_type, sirna or None)
 
         images = []
-        for channel in range(1, 7):
-            for dir in ['train', 'test']:
-                path = self.root / dir / d[0] / 'Plate{}'.format(d[1]) / '{}_s{}_w{}.png'.format(d[2], d[3], channel)
+        if d[2] != -1:
+            for channel in range(1, 7):
+                #for dir in ['train', 'test']:
+                path = self.root / mode / d[0] / 'Plate{}'.format(d[1]) / '{}_s{}_w{}.png'.format(d[2], d[3], channel)
                 if path.exists():
                     break
-            else:
-                assert 0
-            images.append(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE))
-            assert images[-1] is not None
+                else:
+                    assert 0
+                images.append(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE))
+                assert images[-1] is not None
+        else:
+            size = 512, 512, 6
+            images = np.zeros(size, dtype=np.uint8)
+
+                                     
         image = np.stack(images, axis=-1)
         image = F.to_tensor(image)
+                                
+                                     
 
         if self.normalization == 'experiment':
             pixel_mean = torch.tensor(P.pixel_stats[d[0]][0]) / 255
