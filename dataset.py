@@ -121,11 +121,14 @@ class ControlsDataset(Dataset):
         
         self.data = []
         self.cell_types = []
+        sirna_type = set()
         
         for row in csv_t.iterrows():
-            if len(self.data) == 31:
-                break
             r = row[1]
+            if r.sirna in sirna_type:
+                continue
+            sirna_type.add(r.sirna)
+            
             self.data.append((r.experiment, plate, r.well, 1, exp, r.sirna if hasattr(r, 'sirna') else None))
             self.data.append((r.experiment, plate, r.well, 2, exp, r.sirna if hasattr(r, 'sirna') else None))
             
