@@ -165,7 +165,7 @@ def infer(args, model, loader):
 
     model.eval()
     tic = time.time()
-    for i, (X, S, I, exp, plate *_) in enumerate(loader):
+    for i, (X, S, I, exp, plate, *_) in enumerate(loader):
         X = X.cuda()
         S = S.cuda()
 
@@ -490,22 +490,6 @@ def train(args, model):
             best_acc = acc
             logging.info('Saving best to {} with score {}'.format(args.save, best_acc))
             torch.save(model.state_dict(), str(args.save))
-
-def precompute_controls(args, model):
-    model.concat_cell_type = False
-    with open('./controls_embeddings.csv', mode='w') as file:
-        writer = csv.writer(file, delimiter=',')
-        controls_loader = dataset.get_controls_loader()
-        for i, (X, S, _, experiment, plate, Y) in enumerate(controls_loader):
-            X = X.cuda()
-            S = S.cuda()
-            Y = Y.cuda()
-            embedding = model.embed(X, S)
-            str_exp = str(experiment[0])
-            int_plt = int(plate.data[0])
-            int_y = int(Y.data[0])
-            tuple_emb = embedding.data
-            writer.writerow([str_exp, int_plt, int_y, tuple_emb])
             
 def main(args):
     model = ModelAndLoss(args).cuda()

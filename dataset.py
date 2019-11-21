@@ -101,12 +101,12 @@ def get_test_loader(args, exclude_leak=False):
     return DataLoader(test_dataset, args.batch_size, shuffle=False, num_workers=args.num_data_workers,
             worker_init_fn=worker_init_fn)
 
-def get_controls_loader(exp, plate, tr_tst):
-    controls_dataset = ControlsDataset(exp, plate,tr_tst)
+def get_controls_loader(args, exp, plate):
+    controls_dataset = ControlsDataset(exp, plate, mode=args.mode)
     return DataLoader(controls_dataset)
 
 class ControlsDataset(Dataset):
-    def __init__(self, exp, plate, tr_tst, normalization='global'):
+    def __init__(self, exp, plate, mode, normalization='global'):
         super().__init__()
         self.normalization=normalization
         path_str ='/data/'
@@ -115,7 +115,7 @@ class ControlsDataset(Dataset):
         csv_train = pd.read_csv(self.root / 'train_controls.csv')
         csv_test = pd.read_csv(self.root / 'test_controls.csv')
         '''
-        csv_t = pd.read_csv(self.root / 'train_controls.csv') if tr_tst=='train' else pd.read_csv(self.root / 'test_controls.csv')
+        csv_t = pd.read_csv(self.root / 'train_controls.csv') if mode =='train' else pd.read_csv(self.root / 'test_controls.csv')
         csv_t = csv_t[csv_t['experiment'] == exp]
         csv_t = csv_t[csv_t['plate'] == plate]
         
@@ -415,7 +415,6 @@ class CellularDataset(Dataset):
         r = [image, cell_type, torch.tensor(i, dtype=torch.long)]
         r.append(d[0]) # experiment num
         r.append(d[1]) # plate num
-        r.append(torch.tensor(d[-1], dtype=torch.long)) # sirna num (label)
         
         if self.mode != 'test':
             r.append(torch.tensor(d[-1], dtype=torch.long))
