@@ -101,6 +101,74 @@ def get_test_loader(args, exclude_leak=False):
     return DataLoader(test_dataset, args.batch_size, shuffle=False, num_workers=args.num_data_workers,
             worker_init_fn=worker_init_fn)
 
+def get_controls_loader():
+    controls_dataset = ControlsDataset()
+    return DataLoader(controls_dataset)
+
+class ControlsDataset(Dataset):
+    def __init__(self, normalization='global'):
+        super().__init__()
+        self.normalization=normalization
+        path_str ='/data/'
+        self.root = Path(path_str)
+        csv_train = pd.read_csv(self.root / 'train_controls.csv')
+        csv_test = pd.read_csv(self.root / 'test_controls.csv')
+        
+        self.data = []  # (experiment, plate, well, site, cell_type, sirna or None)
+        self.cell_types = []
+        for row in chain(csv_train.iterrows(), csv_test.iterrows()):
+            r = row[1]
+            typ = r.experiment[:r.experiment.find('-')]
+            self.data.append((r.experiment, r.plate, r.well, 1, typ, r.sirna if hasattr(r, 'sirna') else None))
+            self.data.append((r.experiment, r.plate, r.well, 2, typ, r.sirna if hasattr(r, 'sirna') else None))
+            if typ not in self.cell_types:
+                self.cell_types.append(typ)
+        data_dict = {(e, p, w): sir for e, p, w, s, typ, sir in self.data}
+
+        self.cell_types = sorted(self.cell_types)
+        
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        d = self.data[i]
+
+        images = []
+        for channel in range(1, 7):
+            for dir in ['train', 'test']:
+                path = self.root / dir / d[0] / 'Plate{}'.format(d[1]) / '{}_s{}_w{}.png'.format(d[2], d[3], channel)
+                if path.exists():
+                    break
+            else:
+                assert 0
+            images.append(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE))
+            assert images[-1] is not None
+        image = np.stack(images, axis=-1)
+        image = F.to_tensor(image)
+
+        if self.normalization == 'experiment':
+            pixel_mean = torch.tensor(P.pixel_stats[d[0]][0]) / 255
+            pixel_std = torch.tensor(P.pixel_stats[d[0]][1]) / 255
+        elif self.normalization == 'global':
+            pixel_mean = torch.tensor(list(map(lambda x: x[0], P.pixel_stats.values()))).mean(0) / 255
+            pixel_std = torch.tensor(list(map(lambda x: x[1], P.pixel_stats.values()))).mean(0) / 255
+        elif self.normalization == 'sample':
+            pixel_mean = image.mean([1, 2])
+            pixel_std = image.std([1, 2]) + 1e-8
+        else:
+            assert 0
+
+        image = (image - pixel_mean.reshape(-1, 1, 1)) / pixel_std.reshape(-1, 1, 1)
+
+        cell_type = nn.functional.one_hot(torch.tensor(self.cell_types.index(d[-2]), dtype=torch.long),
+                len(self.cell_types)).float()
+
+        r = [image, cell_type, torch.tensor(i, dtype=torch.long)]
+        r.append(d[0]) # experiment num
+        r.append(d[1]) # plate num
+        r.append(torch.tensor(d[-1], dtype=torch.long)) # sirna num (label)
+        return tuple(r)
+
 
 class CellularDataset(Dataset):
     treatment_classes = 1108
@@ -122,7 +190,10 @@ class CellularDataset(Dataset):
 
         super().__init__()
 
-        self.root = '/data/' #Path(root_dir)
+        path_str ='/data/'
+        #self.root = Path(root_dir)
+        #self.root = '/data/'
+        self.root = Path(path_str)
         self.transform = transform
 
         assert normalization in ['global', 'experiment', 'sample']

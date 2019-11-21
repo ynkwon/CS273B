@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import csv
 import itertools
 import logging
 import math
@@ -80,14 +81,15 @@ def parse_args():
     parser.add_argument('--scale-aug', type=float, default=0.5,
             help='zoom augmentation. Scale will be sampled from uniform(scale, 1). '
                  'Scale is a scale for edge (preserving aspect)')
-    parser.add_argument('--all-controls-train', type=bool_type, default=True,
+    parser.add_argument('--all-controls-train', type=bool_type, default=False,
             help='train using all control images (also these from the test set)')
+    parser.add_argument('--smart-controls', type=bool_type, default=True, help='use controls smartly, i.e. make a difference matrix')
     parser.add_argument('--data-normalization', choices=('global', 'experiment', 'sample'), default='sample',
             help='image normalization type: '
                  'global -- use statistics from entire dataset, '
                  'experiment -- use statistics from experiment, '
                  'sample -- use mean and std calculated on given example (after normalization)')
-    parser.add_argument('--data', type=Path, default=Path('../data'),
+    parser.add_argument('--data', type=Path, default=Path('/data'),
             help='path to the data root. It assumes format like in Kaggle with unpacked archives')
     parser.add_argument('--cv-number', type=int, default=0, choices=(-1, 0, 1, 2, 3, 4, 5),
             help='number of fold in 6-fold split. '
@@ -480,6 +482,22 @@ def train(args, model):
             logging.info('Saving best to {} with score {}'.format(args.save, best_acc))
             torch.save(model.state_dict(), str(args.save))
 
+def precompute_controls(args, model):
+    model.concat_cell_type = False
+    with open('./controls_embeddings.csv', mode='w') as file:
+        writer = csv.writer(file, delimiter=',')
+        controls_loader = dataset.get_controls_loader()
+        for i, (X, S, _, experiment, plate, Y) in enumerate(controls_loader):
+            X = X.cuda()
+            S = S.cuda()
+            Y = Y.cuda()
+            embedding = model.embed(X, S)
+            str_exp = str(experiment[0])
+            int_plt = int(plate.data[0])
+            int_y = int(Y.data[0])
+            tuple_emb = embedding.data
+            writer.writerow([str_exp, int_plt, int_y, tuple_emb])
+            
 def main(args):
     model = ModelAndLoss(args).cuda()
     logging.info('Model:\n{}'.format(str(model)))
@@ -492,6 +510,8 @@ def main(args):
         train(args, model)
     elif args.mode == 'predict':
         predict(args, model)
+    elif args.mode == 'precompute_controls':
+        precompute_controls(args, model)
     else:
         assert 0
 

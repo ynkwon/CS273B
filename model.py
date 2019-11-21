@@ -86,10 +86,10 @@ class Model(nn.Module):
         x = x.view(x.size(0), -1)
         if self.concat_cell_type:
             x = torch.cat([x, s], dim=1)
-
-        embedding = self.neck(x)
+        #embedding = self.neck(x)
+        embedding = x
         return embedding
-
+        
     def metric_classify(self, embedding):
         return self.arc_margin_product(embedding)
 
