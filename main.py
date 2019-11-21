@@ -165,12 +165,17 @@ def infer(args, model, loader):
 
     model.eval()
     tic = time.time()
-    for i, (X, S, I, *_) in enumerate(loader):
+    for i, (X, S, I, exp, plate *_) in enumerate(loader):
         X = X.cuda()
         S = S.cuda()
 
         Xs = dataset.tta(args, X) if args.tta else [X]
-        ys = [model.eval_forward(X, S) for X in Xs]
+                    
+        control_loader = None
+        if args.smart_controls:
+            control_loader = dataset.get_controls_loader(args, exp, plate)
+        
+        ys = [model.eval_forward(X, S, control_loader) for X in Xs]
         y = torch.stack(ys).mean(0).cpu()
 
         for j in range(len(I)):
@@ -443,7 +448,7 @@ def train(args, model):
         cum_acc = 0
         cum_count = 0
         tic = time.time()
-        for i, (X, S, _, Y) in enumerate(train_loader):
+        for i, (X, S, _, exp, plate, Y) in enumerate(train_loader):
             lr = get_learning_rate(args, epoch + i / len(train_loader))
             for g in optimizer.param_groups:
                 g['lr'] = lr
@@ -452,8 +457,12 @@ def train(args, model):
             S = S.cuda()
             Y = Y.cuda()
             X, S, Y = transform_input(args, X, S, Y)
-
-            loss, acc = model.train_forward(X, S, Y)
+            
+            control_loader = None
+            if args.smart_controls:
+                control_loader = dataset.get_controls_loader(args, exp, plate)
+            
+            loss, acc = model.train_forward(X, S, Y, control_loader)
             if args.fp16:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -510,8 +519,6 @@ def main(args):
         train(args, model)
     elif args.mode == 'predict':
         predict(args, model)
-    elif args.mode == 'precompute_controls':
-        precompute_controls(args, model)
     else:
         assert 0
 

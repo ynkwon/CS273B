@@ -49,17 +49,31 @@ class Model(nn.Module):
 
         self.concat_cell_type = args.concat_cell_type
         self.classes = args.classes
-
+        self.smart_controls = args.smart_controls
+        
         features_num = features_num + (4 if self.concat_cell_type else 0)
-
-        self.neck = nn.Sequential(
-            nn.BatchNorm1d(features_num),
-            nn.Linear(features_num, args.embedding_size, bias=False),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(args.embedding_size),
-            nn.Linear(args.embedding_size, args.embedding_size, bias=False),
-            nn.BatchNorm1d(args.embedding_size),
-        )
+        
+        if self.smart_controls:
+            features_num *= 31
+            self.neck = nn.Sequential(
+                nn.BatchNorm2d(features_num),
+                nn.Linear(features_num, args.embedding_size, bias=False),
+                nn.ReLU(inplace=True),
+                nn.BatchNorm1d(args.embedding_size),
+                nn.Linear(args.embedding_size, args.embedding_size, bias=False),
+                nn.BatchNorm1d(args.embedding_size),
+            )   
+        else:
+            self.neck = nn.Sequential(
+                nn.BatchNorm1d(features_num),
+                nn.Linear(features_num, args.embedding_size, bias=False),
+                nn.ReLU(inplace=True),
+                nn.BatchNorm1d(args.embedding_size),
+                nn.Linear(args.embedding_size, args.embedding_size, bias=False),
+                nn.BatchNorm1d(args.embedding_size),
+            )    
+            
+            
         self.arc_margin_product = ArcMarginProduct(args.embedding_size, args.classes)
 
         if args.head_hidden is None:
@@ -78,16 +92,27 @@ class Model(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.BatchNorm2d):
                 m.momentum = args.bn_mom
-
-    def embed(self, x, s):
+                
+    def embed(self, x, s, controls):
         x = self.features(x)
 
         x = F.adaptive_avg_pool2d(x, (1, 1))
         x = x.view(x.size(0), -1)
+        
+        control_tensor = torch.zeros(31, 6)
+        for i, (cont_x, cont_y) in enumerate(controls):
+            cont_x = self.features(cont_x)
+            cont_x = F.adaptive_avg_pool2d(cont_x, (1, 1))
+            cont_x = cont_x.view(cont_x.size(0), -1)
+            control_tensor[i,:] = cont_x
+        
+        print(control_tensor)
+        
+        x = control_tensor - x.expand_as(control_tensor)
+        
         if self.concat_cell_type:
             x = torch.cat([x, s], dim=1)
-        #embedding = self.neck(x)
-        embedding = x
+        embedding = self.neck(x)
         return embedding
         
     def metric_classify(self, embedding):
@@ -106,8 +131,8 @@ class ModelAndLoss(nn.Module):
         self.metric_crit = ArcFaceLoss()
         self.crit = DenseCrossEntropy()
 
-    def train_forward(self, x, s, y):
-        embedding = self.model.embed(x, s)
+    def train_forward(self, x, s, y, controls):
+        embedding = self.model.embed(x, s, controls)
 
         metric_output = self.model.metric_classify(embedding)
         metric_loss = self.metric_crit(metric_output, y)
@@ -120,8 +145,8 @@ class ModelAndLoss(nn.Module):
         coeff = self.args.metric_loss_coeff
         return loss * (1 - coeff) + metric_loss * coeff, acc
 
-    def eval_forward(self, x, s):
-        embedding = self.model.embed(x, s)
+    def eval_forward(self, x, s, controls):
+        embedding = self.model.embed(x, s, controls)
         output = self.model.classify(embedding)
         return output
 
