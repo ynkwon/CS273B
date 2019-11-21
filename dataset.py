@@ -122,7 +122,7 @@ class CellularDataset(Dataset):
 
         super().__init__()
 
-        self.root = Path(root_dir)
+        self.root = '/data/' #Path(root_dir)
         self.transform = transform
 
         assert normalization in ['global', 'experiment', 'sample']
