@@ -132,8 +132,8 @@ class ControlsDataset(Dataset):
             self.data.append((r.experiment, plate, r.well, 1, exp, r.sirna if hasattr(r, 'sirna') else None))
             self.data.append((r.experiment, plate, r.well, 2, exp, r.sirna if hasattr(r, 'sirna') else None))
             
-            if typ not in self.cell_types:
-                self.cell_types.append(typ)
+            if exp not in self.cell_types:
+                self.cell_types.append(exp)
                 
         #data_dict = {(e, p, w): sir for e, p, w, s, typ, sir in self.data}
         self.data = sorted(self.data, key=lambda x: x[5])
